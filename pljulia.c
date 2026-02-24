@@ -16,6 +16,7 @@
 #include <catalog/pg_type.h>
 #include <utils/memutils.h>
 #include <utils/builtins.h>
+#include <parser/parse_type.h>
 #include <utils/syscache.h>
 #include <utils/typcache.h>
 #include <utils/rel.h>
@@ -312,7 +313,7 @@ pljulia_spi_exec(jl_value_t *cmd, jl_value_t *lim)
 
 			tuple = tuptable->vals[i];
 			ret = pljulia_dict_from_tuple(tuple, tupdesc, false);
-			jl_arrayset(ret_val, ret, i);
+		((jl_value_t **)jl_array_ptr((jl_array_t *)ret_val))[i] = ret;
 		}
 
 	}
@@ -374,9 +375,8 @@ pljulia_spi_prepare(jl_value_t *cmd, jl_value_t *types_arr)
 		int32		typmod;
 		jl_value_t *curr_argtype;
 
-		curr_argtype = jl_arrayref(types_arr, i);
-		parseTypeString(jl_string_ptr(curr_argtype), &typId, &typmod, false);
-
+		curr_argtype = ((jl_value_t **)jl_array_ptr((jl_array_t *)types_arr))[i];
+                parseTypeString(jl_string_ptr(curr_argtype), &typId, &typmod, false);
 		getTypeInputInfo(typId, &typInput, &typIOParam);
 
 		qdesc->argtypes[i] = typId;
@@ -453,7 +453,7 @@ pljulia_spi_execplan(jl_value_t *plan, jl_value_t *arguments, jl_value_t *lim)
 	for (i = 0; i < nargs; i++)
 	{
 		bool		isnull;
-		jl_value_t *curr_arg = jl_arrayref(arguments, i);
+		jl_value_t *curr_arg = ((jl_value_t **)jl_array_ptr((jl_array_t *)arguments))[i];
 
 		/* null value? */
 		if (jl_is_nothing(curr_arg))
@@ -500,7 +500,7 @@ pljulia_spi_execplan(jl_value_t *plan, jl_value_t *arguments, jl_value_t *lim)
 
 			tuple = tuptable->vals[i];
 			ret = pljulia_dict_from_tuple(tuple, tupdesc, false);
-			jl_arrayset(ret_val, ret, i);
+			((jl_value_t **)jl_array_ptr((jl_array_t *)ret_val))[i] = ret;
 		}
 
 	}
@@ -798,7 +798,7 @@ _PG_init(void)
 		int			j;
 
 		packname[0] = '\0';
-		package = jl_arrayref(packages, i);
+		package = ((jl_value_t **)jl_array_ptr((jl_array_t *)packages))[i];
 		strcpy(packname, "using ");
 		strcat(packname, jl_string_ptr(package));
 		j = strlen(packname);
@@ -1164,13 +1164,13 @@ julia_array_from_datum(Datum d, Oid argtype)
 		if (nulls[i])
 		{
 			/* already initialized to nothing so this is redundant */
-			jl_arrayset(jl_arr, (jl_value_t *) jl_nothing, j);
+			((jl_value_t **)jl_array_ptr((jl_array_t *)jl_arr))[j] = (jl_value_t *) jl_nothing;
 			continue;
 		}
 		value = OutputFunctionCall(arg_out_func, elements[i]);
 
 		jl_boxed_elem = pg_oid_to_jl_value(elementtype, value);
-		jl_arrayset(jl_arr, (jl_value_t *) jl_boxed_elem, j);
+		((jl_value_t **)jl_array_ptr((jl_array_t *)jl_arr))[j] = (jl_value_t *)jl_boxed_elem;
 	}
 	return (jl_value_t *) jl_arr;
 }
@@ -1637,8 +1637,7 @@ pg_array_from_julia_array(FunctionCallInfo fcinfo, jl_value_t *ret,
 	for (i = 0; i < len; i++)
 	{
 		row_major_offset = calculate_rm_offset(i, ndim, dims);
-		curr_elem = jl_arrayref(ret, i);
-		/* if jl_nothing then set it as NULL */
+		curr_elem = ((jl_value_t **)jl_array_ptr((jl_array_t *)ret))[i];		/* if jl_nothing then set it as NULL */
 		if (jl_typeis(curr_elem, jl_nothing_type))
 		{
 			/* first null we found, so palloc */
@@ -1953,8 +1952,7 @@ pljulia_trigger_handler(PG_FUNCTION_ARGS)
 	for (i = 0; i < trigdata->tg_trigger->tgnargs; i++)
 	{
 		arg = utf_e2u(trigdata->tg_trigger->tgargs[i]);
-		jl_arrayset(trig_args[9],
-					jl_cstr_to_string(arg), i);
+		((jl_value_t **)jl_array_ptr((jl_array_t *)trig_args[9]))[i] = (jl_value_t *) jl_cstr_to_string(arg);
 	}
 	/* Now call the trigger function */
 	func = jl_get_function(jl_main_module, prodesc->internal_proname);
