@@ -136,7 +136,7 @@ MemoryContext TopMemoryContext = NULL;
  * We won't be using this variable as a cglobal, but we declare it
  * anyway to keep a reference to it and prevent it from being GC'ed.
  */
-jl_value_t *GD;
+static jl_value_t *GD;
 
 PG_MODULE_MAGIC;
 
@@ -194,7 +194,7 @@ pljulia_spi_query(jl_value_t *cmd)
 	SPIPlanPtr	plan;
 	Portal		portal;
 
-	char	   *query = jl_string_ptr(cmd);
+	const char	   *query = jl_string_ptr(cmd);
 
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "could not connect to SPI manager");
@@ -238,8 +238,9 @@ pljulia_spi_cursor_close(jl_value_t *cursor)
 jl_value_t *
 pljulia_spi_fetchrow(jl_value_t *cursor)
 {
-	elog(DEBUG1, "Inside spi_fetchrow");
 	jl_value_t *row;
+	elog(DEBUG1, "Inside spi_fetchrow");
+	
 
 	if (SPI_connect() != SPI_OK_CONNECT)
 		elog(ERROR, "could not connect to SPI manager");
@@ -281,7 +282,7 @@ pljulia_spi_fetchrow(jl_value_t *cursor)
 jl_value_t *
 pljulia_spi_exec(jl_value_t *cmd, jl_value_t *lim)
 {
-	char	   *command;
+	const char	   *command;
 	int			row_limit;
 	int			ret;
 	jl_value_t *ret_val;
@@ -347,7 +348,7 @@ pljulia_spi_prepare(jl_value_t *cmd, jl_value_t *types_arr)
 
 	MemoryContext oldcontext = CurrentMemoryContext;
 	jl_function_t *len = jl_get_function(jl_base_module, "length");
-	char	   *query = jl_string_ptr(cmd);
+	const char	   *query = jl_string_ptr(cmd);
 	bool		found_hashentry;
 
 	plan_cxt = AllocSetContextCreate(TopMemoryContext, "PL/Julia spi_prepare query",
@@ -424,7 +425,7 @@ pljulia_spi_execplan(jl_value_t *plan, jl_value_t *arguments, jl_value_t *lim)
 
 	ret_val = jl_eval_string("[]");
 	nargs = jl_unbox_int64(jl_call1(len, arguments));
-	query = jl_string_ptr(plan);
+	query = (char *) jl_string_ptr(plan);
 	/* The hashtable entry key is a char * for the query hashtable */
 	hash_entry = hash_search(pljulia_query_hashtable, query,
 							 HASH_FIND, NULL);
@@ -452,7 +453,7 @@ pljulia_spi_execplan(jl_value_t *plan, jl_value_t *arguments, jl_value_t *lim)
 
 	for (i = 0; i < nargs; i++)
 	{
-		bool		isnull;
+		
 		jl_value_t *curr_arg = ((jl_value_t **)jl_array_ptr((jl_array_t *)arguments))[i];
 
 		/* null value? */
@@ -714,6 +715,9 @@ _PG_init(void)
 				t2;
 	int			i,
 				npackages = 0;
+	HASHCTL		hash_ctl;
+	char	   *dict_set_command,
+			   *dict_get_command;
 
 	gettimeofday(&t1, NULL);
 	/* required: setup the Julia context */
@@ -726,7 +730,7 @@ _PG_init(void)
 	/*
 	 * Initialize the hash table
 	 */
-	HASHCTL		hash_ctl;
+	
 
 	memset(&hash_ctl, 0, sizeof(hash_ctl));
 	hash_ctl.keysize = sizeof(pljulia_proc_key);
@@ -746,8 +750,7 @@ _PG_init(void)
 	pljulia_query_hashtable = hash_create("PL/Julia cached plans hashtable",
 										  32, &hash_ctl, HASH_ELEM);
 
-	char	   *dict_set_command,
-			   *dict_get_command;
+	
 
 	/*
 	 * The following functions are declared here and will be used to convert
@@ -831,7 +834,7 @@ static Datum
 jl_value_t_to_datum(FunctionCallInfo fcinfo, jl_value_t *ret, Oid prorettype, bool usefcinfo)
 {
 	/* maybe I should check the depth of the recursion stack */
-	char	   *buffer;
+	 char	   *buffer;
 
 	/* A nothing in Julia is a NULL in Postgres */
 	if (jl_is_nothing(ret))
@@ -861,7 +864,7 @@ jl_value_t_to_datum(FunctionCallInfo fcinfo, jl_value_t *ret, Oid prorettype, bo
 		 * get the string representation of bigfloat since there's not a
 		 * function in Julia's C-API for unboxing this type
 		 */
-		buffer = jl_string_ptr(jl_call1(str_func, ret));
+		buffer = (char *) jl_string_ptr(jl_call1(str_func, ret));
 	}
 	else if (jl_typeis(ret, jl_float32_type))
 	{
@@ -876,7 +879,7 @@ jl_value_t_to_datum(FunctionCallInfo fcinfo, jl_value_t *ret, Oid prorettype, bo
 	{
 		long int	ret_unboxed = jl_unbox_int64(ret);
 
-		elog(DEBUG1, "ret (int64): %ld", jl_unbox_int64(ret));
+		elog(DEBUG1, "ret (int64): %lld", jl_unbox_int64(ret));
 
 		buffer = (char *) palloc0((LONG_INT_LEN + 1) * sizeof(char));
 		snprintf(buffer, LONG_INT_LEN, "%ld", ret_unboxed);
@@ -1093,13 +1096,10 @@ jl_value_t *
 julia_array_from_datum(Datum d, Oid argtype)
 {
 	ArrayType  *ar;
-	Oid			elementtype,
-				typioparam,
-				typoutputfunc;
+	Oid			elementtype;
 	int16		typlen;
 	bool		typbyval;
-	char		typalign,
-				typdelim;
+	char		typalign;
 	int			i,
 				j,
 				nitems,
@@ -1148,14 +1148,14 @@ julia_array_from_datum(Datum d, Oid argtype)
 	for (i = 0; i < ndims; i++)
 		types[i] = (jl_value_t *) jl_int64_type;
 
-	tt = jl_apply_tuple_type_v(types, ndims);
+	tt = (jl_tupletype_t *) jl_apply_tuple_type_v(types, ndims);
 
 	for (i = 0; i < ndims; i++)
 		tupvalues[i] = jl_box_int64(dims[i]);
 
 	dimtuple = jl_new_structv(tt, tupvalues, ndims);
 	init_arr = jl_get_function(jl_main_module, "init_nulls_anyarray");
-	jl_arr = jl_call1(init_arr, dimtuple);
+	jl_arr = (jl_array_t *) jl_call1(init_arr, dimtuple);
 
 	for (i = 0; i < nitems; i++)
 	{
@@ -1264,6 +1264,8 @@ pljulia_compile(FunctionCallInfo fcinfo, HeapTuple procedure_tuple,
 	bool		found_hashentry;
 	pljulia_proc_key proc_key;
 	pljulia_hash_entry *hash_entry;
+	char internal_procname[256];
+	
 
 	/* First try to find the function in the lookup table */
 	proc_key.fn_oid = fcinfo->flinfo->fn_oid;
@@ -1304,7 +1306,7 @@ pljulia_compile(FunctionCallInfo fcinfo, HeapTuple procedure_tuple,
 	 * oid and even the NAMEDATALEN-length function name should we decide to
 	 * include that too
 	 */
-	char		internal_procname[256];
+	
 
 	procedure_source_datum = SysCacheGetAttr(PROCOID, procedure_tuple,
 											 Anum_pg_proc_prosrc, &isnull);
