@@ -6,7 +6,7 @@
 #   JULIA_VERSION=1.6.1
 #   JULIA_SHA256=7c888adec3ea42afbfed2ce756ce1164a570d50fa7506c3f2e1e2cbc49d52506
 #   PLJULIA_REGRESSION=YES
-#   PLJULIA_PACKAGES="CpuId,Primes"
+#   PLJULIA_PACKAGES="Primes"
 #
 # ---------------------------------
 # BASE_IMAGE_VERSION = Base Docker images:
@@ -23,16 +23,18 @@
 # - postgres:14             : OK
 # - postgis/postgis:13-3.1  : Should work
 #
-
 ARG BASE_IMAGE_VERSION=postgres:14
 FROM $BASE_IMAGE_VERSION as builder
 
-# add debian mirror - for a faster build
-#ARG APT_MIRROR=cdn-fastly.deb.debian.org
-ARG APT_MIRROR=ftp.de.debian.org
-RUN sed -ri "s/(httpredir|deb).debian.org/${APT_MIRROR:-deb.debian.org}/g" /etc/apt/sources.list \
- && sed -ri "s/(security).debian.org/${APT_MIRROR:-security.debian.org}/g" /etc/apt/sources.list \
- && cat /etc/apt/sources.list
+# Install build dependencies
+RUN    apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        postgresql-server-dev-$PG_MAJOR \
+    && apt-get clean -y \
+    && rm -rf /var/lib/apt/lists/* /tmp/*
 
 # Install build dependencies
 RUN    apt-get update \
@@ -45,10 +47,10 @@ RUN    apt-get update \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 # Julia Versions:
-ARG JULIA_MAJOR=1.6
-ARG JULIA_VERSION=1.6.3
-ARG JULIA_SHA256=c7459c334cd7c3e4a297baf52535937c6bad640e60882f9201a73bab9394314b
-ARG PLJULIA_PACKAGES="CpuId,Primes"
+ARG JULIA_MAJOR=1.10
+ARG JULIA_VERSION=1.10.4
+ARG JULIA_SHA256=ae4ae6ade84a103cdf30ce91c8d4035a0ef51c3e2e66f90a0c13abeb4e100fc4
+ARG PLJULIA_PACKAGES="Primes"
 
 # Install Julia
 ENV LANG=C.UTF-8 \
@@ -65,12 +67,10 @@ ENV LANG=C.UTF-8 \
 RUN set -eux; \
     mkdir ${JULIA_DIR} \
     && cd /tmp  \
-    && curl -fL -o julia.tar.gz https://julialang-s3.julialang.org/bin/linux/x64/${JULIA_MAJOR}/julia-${JULIA_VERSION}-linux-x86_64.tar.gz \
-    && echo "$JULIA_SHA256 julia.tar.gz" | sha256sum -c - \
+    && curl -fL -o julia.tar.gz https://julialang-s3.julialang.org/bin/linux/aarch64/${JULIA_MAJOR}/julia-${JULIA_VERSION}-linux-aarch64.tar.gz \
     && tar xzf julia.tar.gz -C ${JULIA_DIR} --strip-components=1 \
     && rm /tmp/julia.tar.gz \
     && ln -fs ${JULIA_DIR}/bin/julia /usr/local/bin/julia
-
 # Add julia packages from ENV["PLJULIA_PACKAGES"]
 # - this is a comma separated package name lists
 RUN set -eux; \
