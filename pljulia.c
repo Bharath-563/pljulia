@@ -795,16 +795,23 @@ _PG_init(void)
 	{
 		jl_value_t *package;
 		const char *pkgname;
-		char	   *packname;
-		size_t		packname_len;
+		char	packname[MAXPGPATH];
 
+		/* Pull the package out of the Julia array and get its string value */
 		package = jl_arrayref(packages, i);
 		pkgname = jl_string_ptr(package);
-		packname_len = strlen(pkgname) + 7; /* "using " (6) + name + '\0' */
-		packname = (char *) palloc(packname_len);
-		snprintf(packname, packname_len, "using %s", pkgname);
+
+		/* Ensure the package name doesn't exceed the OS path limit */
+		if (strlen(pkgname) + 7 > MAXPGPATH)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_NAME_TOO_LONG),
+					 errmsg("package name exceeds maximum operating system path length")));
+		}
+
+		snprintf(packname, sizeof(packname), "using %s", pkgname);
 		jl_eval_string(packname);
-		pfree(packname);
+	
 	}
 	JL_GC_POP();
 }
