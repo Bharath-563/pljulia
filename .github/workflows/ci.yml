@@ -2,10 +2,10 @@ name: PL/Julia CI Pipeline
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "**" ] # This tells it to run on ANY branch you push to
   pull_request:
     branches: [ "main", "master" ]
-
+  workflow_dispatch: # This adds a magical "Run Workflow" button in GitHub!
 jobs:
   build-and-test:
     name: Build and Run Regression Tests
