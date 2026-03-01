@@ -2,10 +2,11 @@ name: PL/Julia CI Pipeline
 
 on:
   push:
-    branches: [ "**" ] # This tells it to run on ANY branch you push to
+    branches: [ "**" ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch: # This adds a magical "Run Workflow" button in GitHub!
+  workflow_dispatch:
+
 jobs:
   build-and-test:
     name: Build and Run Regression Tests
@@ -17,12 +18,11 @@ jobs:
 
       - name: Adjust Dockerfile for x86_64 CI Runner
         run: |
-          # GitHub Actions uses Intel (x86_64) runners. 
-          # This dynamically swaps the ARM architecture used for local Mac testing.
+          # 1. Strip the hardcoded ARM64 sha256 hash so Docker natively pulls an Intel base image
+          sed -i 's/@sha256:[a-f0-9]*//g' Dockerfile
+          # 2. Swap the Julia download URL from ARM to Intel
           sed -i 's/aarch64/x64/g' Dockerfile
           sed -i 's/linux-x64/linux-x86_64/g' Dockerfile
 
       - name: Build PL/Julia and Run Tests
-        # The Dockerfile automatically compiles the C code and runs
-        # `make installcheck` as its final step. If this command succeeds, the tests passed!
         run: docker build -t pljulia-ci --progress=plain --no-cache .
