@@ -16,11 +16,12 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Adjust Dockerfile for x86_64 CI Runner
+      - name: Force Native Intel Build
         run: |
-          # 1. Strip the hardcoded ARM64 sha256 hash so Docker natively pulls an Intel base image
-          sed -i 's/@sha256:[a-f0-9]*//g' Dockerfile
-          # 2. Swap the Julia download URL from ARM to Intel
+          # 1. Strip the Mac ARM platform flag so GitHub pulls native Intel PostgreSQL
+          sed -i 's/--platform=linux\/arm64 //g' Dockerfile
+          
+          # 2. Swap Julia architecture in the download URL
           sed -i 's/aarch64/x64/g' Dockerfile
           sed -i 's/linux-x64/linux-x86_64/g' Dockerfile
 
