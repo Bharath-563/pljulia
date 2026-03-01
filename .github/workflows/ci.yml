@@ -18,11 +18,12 @@ jobs:
 
       - name: Force Native Intel Architecture
         run: |
-          # 1. Wipe out whatever base image is written and force pure Intel PostgreSQL
-          sed -i 's/^FROM .*/FROM postgres:14/g' Dockerfile
+          # Remove any platform flags and force Intel Postgres
+          sed -i 's/--platform=[^ ]*//g' Dockerfile
+          sed -i 's|^FROM .*|FROM postgres:14|g' Dockerfile
           
-          # 2. Wipe out the Mac download URL and force the pure Intel Julia binary
-          sed -i 's|https://julialang-s3.julialang.org/.*\.tar\.gz|https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz|g' Dockerfile
+          # Force the Intel Julia download URL
+          sed -i 's|https://julialang-s3.julialang.org/[^ ]*|https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz|g' Dockerfile
 
       - name: Build PL/Julia and Run Tests
         run: docker build -t pljulia-ci --progress=plain --no-cache .
