@@ -40,4 +40,3 @@ RUN set -eux; \
     su postgres -c 'pg_ctl -D /tempdb --mode=immediate stop' && \
     rm -rf /tempdb
 
-echo "# Trigger CI Run: $(date)" >> Dockerfile# Force Trigger Build: Sun Mar  1 11:56:07 IST 2026
