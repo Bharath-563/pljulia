@@ -1,32 +1,7 @@
-# Pl/Julia Development Docker images
-#
-# Arg/Parameters:
-#   BASE_IMAGE_VERSION=postgres:14
-#   JULIA_MAJOR=1.10
-#   JULIA_VERSION=1.10.4
-#   JULIA_SHA256=ae4ae6ade84a103cdf30ce91c8d4035a0ef51c3e2e66f90a0c13abeb4e100fc4
-#   PLJULIA_REGRESSION=YES
-#   PLJULIA_PACKAGES="Primes"
-#
-# ---------------------------------
-# BASE_IMAGE_VERSION = Base Docker images:
-#   Valid values:  `postgres` and `postgis/postgis` debian versions
-#   postgres: https://hub.docker.com/_/postgres?tab=tags&page=1&ordering=last_updated&name=buster  (debian based!)
-#   postgis:  https://registry.hub.docker.com/r/postgis/postgis/tags?page=1&ordering=last_updated
-#
-# BASE_IMAGE_VERSION - Status:
-# - postgres:9.6            : Not working yet
-# - postgres:10             : Not working yet
-# - postgres:11             : Not working yet
-# - postgres:12             : OK
-# - postgres:13             : OK
-# - postgres:14             : OK
-# - postgis/postgis:13-3.1  : Should work
-#
+cat > Dockerfile << 'ENDOFFILE'
 ARG BASE_IMAGE_VERSION=postgres:14
 FROM $BASE_IMAGE_VERSION AS builder
 
-# Install build dependencies
 RUN    apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
@@ -37,21 +12,17 @@ RUN    apt-get update \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
-# Julia Versions:
 ARG JULIA_MAJOR=1.10
 ARG JULIA_VERSION=1.10.4
 ARG JULIA_SHA256=ae4ae6ade84a103cdf30ce91c8d4035a0ef51c3e2e66f90a0c13abeb4e100fc4
 ARG PLJULIA_PACKAGES=""
 
-# Install Julia
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    \
     JULIA_MAJOR=$JULIA_MAJOR \
     JULIA_VERSION=$JULIA_VERSION \
     JULIA_SHA256=$JULIA_SHA256 \
     PLJULIA_PACKAGES=$PLJULIA_PACKAGES \
-    \
     JULIA_DIR=/usr/local/julia \
     JULIA_PATH=/usr/local/julia
 
@@ -63,11 +34,8 @@ RUN set -eux; \
     && rm /tmp/julia.tar.gz \
     && ln -fs ${JULIA_DIR}/bin/julia /usr/local/bin/julia
 
-# Fix for GitHub Actions kernel restricting executable stack (required for Julia 1.10+)
-RUN find ${JULIA_DIR}/lib/julia -name "*.so" -exec execstack --clear-execstack {} \;
+RUN find /usr/local/julia/lib/julia -name "*.so" -exec execstack --clear-execstack {} \;
 
-# Add julia packages from ENV["PLJULIA_PACKAGES"]
-# - this is a comma separated package name list
 RUN set -eux; \
     if [ ! -z "$PLJULIA_PACKAGES" ]; then \
       echo "install: ${PLJULIA_PACKAGES}"; \
@@ -87,10 +55,8 @@ RUN set -eux; \
               end;'; \
     rm -rf "~/.julia/registries/General"
 
-# default: add local code
 ADD . /pljulia
 
-# -------- Build & Install ----------
 ENV USE_PGXS=1
 
 RUN set -eux; \
@@ -99,7 +65,6 @@ RUN set -eux; \
         && make \
         && make install
 
-# ------ Regression tests ---
 ARG PLJULIA_REGRESSION=YES
 ENV PLJULIA_REGRESSION=${PLJULIA_REGRESSION}
 
@@ -114,4 +79,4 @@ RUN set -eux; \
         && su postgres -c 'pg_ctl -D /tempdb --mode=immediate stop' \
         && rm -rf /tempdb ; \
     fi
-# -----------------------------
+ENDOFFILE
