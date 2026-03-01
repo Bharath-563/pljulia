@@ -1,20 +1,16 @@
 name: PL/Julia CI Pipeline
-
 on:
   push:
     branches: [ "**" ]
   pull_request:
     branches: [ "main", "master" ]
   workflow_dispatch:
-
 jobs:
   build-and-test:
     name: Build and Run Regression Tests
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-
       - name: Build PL/Julia and Run Tests
         run: docker build -t pljulia-ci --progress=plain --no-cache .
