@@ -1,16 +1,16 @@
 ARG BASE_IMAGE_VERSION=postgres:14
 FROM $BASE_IMAGE_VERSION AS builder
 
-# 1. Install build dependencies + 'execstack' tool
+# 1. Install build dependencies + 'prelink' (which contains execstack)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential ca-certificates curl postgresql-server-dev-14 execstack \
+    build-essential ca-certificates curl postgresql-server-dev-14 prelink \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 ARG JULIA_MAJOR=1.10
 ARG JULIA_VERSION=1.10.4
 ENV JULIA_DIR=/usr/local/julia
 
-# 2. Install Julia and CLEAR the executable stack flag to prevent the security crash
+# 2. Install Julia and use 'execstack' to fix the security flag
 RUN set -eux; \
     mkdir ${JULIA_DIR} && cd /tmp && \
     curl -fL -o julia.tar.gz https://julialang-s3.julialang.org/bin/linux/x64/${JULIA_MAJOR}/julia-${JULIA_VERSION}-linux-x86_64.tar.gz && \
@@ -22,7 +22,7 @@ RUN set -eux; \
 ADD . /pljulia
 WORKDIR /pljulia
 
-# 3. Explicitly point to Julia headers so 'make' doesn't fail
+# 3. Explicitly point to Julia headers
 ENV USE_PGXS=1
 ENV CPATH="/usr/local/julia/include/julia"
 
