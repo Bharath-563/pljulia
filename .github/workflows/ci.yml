@@ -25,4 +25,4 @@ jobs:
       - name: Build PL/Julia and Run Tests
         # The Dockerfile automatically compiles the C code and runs
         # `make installcheck` as its final step. If this command succeeds, the tests passed!
-        run: docker build -t pljulia-ci .
+        run: docker build -t pljulia-ci --progress=plain --no-cache .
