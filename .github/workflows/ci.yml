@@ -16,30 +16,5 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Create Pristine CI Dockerfile
-        run: |
-          cat << 'EOF' > Dockerfile.ci
-          FROM postgres:14
-          
-          # 1. Install pure Intel Linux dependencies
-          RUN apt-get update && apt-get install -y gcc make curl postgresql-server-dev-14
-          
-          # 2. Force official Intel Julia 1.10 extraction directly to system path
-          RUN curl -L https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz | tar -xz -C /usr/local --strip-components=1
-          
-          # 3. Copy your local repository code
-          COPY . /pljulia
-          WORKDIR /pljulia
-          
-          # 4. Compile the C-extension using Postgres 14 headers
-          RUN make && make install
-          
-          # 5. Run regression tests safely as the postgres user
-          RUN chown -R postgres:postgres /pljulia
-          USER postgres
-          RUN initdb -D /tmp/db && pg_ctl -D /tmp/db -l /tmp/logfile start -w && make installcheck
-          EOF
-
       - name: Build PL/Julia and Run Tests
-        # Notice we are building the newly generated Dockerfile.ci, ignoring your local file
-        run: docker build -f Dockerfile.ci -t pljulia-ci --progress=plain --no-cache .
+        run: docker build -t pljulia-ci --progress=plain .

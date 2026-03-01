@@ -50,7 +50,7 @@ RUN    apt-get update \
 ARG JULIA_MAJOR=1.10
 ARG JULIA_VERSION=1.10.4
 ARG JULIA_SHA256=ae4ae6ade84a103cdf30ce91c8d4035a0ef51c3e2e66f90a0c13abeb4e100fc4
-ARG PLJULIA_PACKAGES="Primes"
+ARG PLJULIA_PACKAGES="CpuId,Primes"
 
 # Install Julia
 ENV LANG=C.UTF-8 \
@@ -67,7 +67,7 @@ ENV LANG=C.UTF-8 \
 RUN set -eux; \
     mkdir ${JULIA_DIR} \
     && cd /tmp  \
-    && curl -fL -o julia.tar.gz https://julialang-s3.julialang.org/bin/linux/aarch64/${JULIA_MAJOR}/julia-${JULIA_VERSION}-linux-aarch64.tar.gz \
+    && curl -fL -o julia.tar.gz https://julialang-s3.julialang.org/bin/linux/x64/${JULIA_MAJOR}/julia-${JULIA_VERSION}-linux-x86_64.tar.gz \
     && tar xzf julia.tar.gz -C ${JULIA_DIR} --strip-components=1 \
     && rm /tmp/julia.tar.gz \
     && ln -fs ${JULIA_DIR}/bin/julia /usr/local/bin/julia
