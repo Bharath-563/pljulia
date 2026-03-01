@@ -16,14 +16,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Force Native Intel Build
+      - name: Force Native Intel Architecture
         run: |
-          # 1. Strip the Mac ARM platform flag so GitHub pulls native Intel PostgreSQL
-          sed -i 's/--platform=linux\/arm64 //g' Dockerfile
+          # 1. Wipe out whatever base image is written and force pure Intel PostgreSQL
+          sed -i 's/^FROM .*/FROM postgres:14/g' Dockerfile
           
-          # 2. Swap Julia architecture in the download URL
-          sed -i 's/aarch64/x64/g' Dockerfile
-          sed -i 's/linux-x64/linux-x86_64/g' Dockerfile
+          # 2. Wipe out the Mac download URL and force the pure Intel Julia binary
+          sed -i 's|https://julialang-s3.julialang.org/.*\.tar\.gz|https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz|g' Dockerfile
 
       - name: Build PL/Julia and Run Tests
         run: docker build -t pljulia-ci --progress=plain --no-cache .
