@@ -1,8 +1,7 @@
-cat > Dockerfile << 'ENDOFFILE'
 ARG BASE_IMAGE_VERSION=postgres:14
 FROM $BASE_IMAGE_VERSION AS builder
 
-RUN    apt-get update \
+RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         ca-certificates \
@@ -69,7 +68,7 @@ ARG PLJULIA_REGRESSION=YES
 ENV PLJULIA_REGRESSION=${PLJULIA_REGRESSION}
 
 RUN set -eux; \
-    if [ "$PLJULIA_REGRESSION" = "YES" ]; then  \
+    if [ "$PLJULIA_REGRESSION" = "YES" ]; then \
            cd /pljulia \
         && mkdir /tempdb \
         && chown -R postgres:postgres /tempdb \
@@ -79,4 +78,3 @@ RUN set -eux; \
         && su postgres -c 'pg_ctl -D /tempdb --mode=immediate stop' \
         && rm -rf /tempdb ; \
     fi
-ENDOFFILE
