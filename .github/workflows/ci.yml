@@ -16,14 +16,20 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Force Native Intel Architecture
+     - name: Force Native Intel Architecture & Debug
         run: |
-          # Remove any platform flags and force Intel Postgres
-          sed -i 's/--platform=[^ ]*//g' Dockerfile
-          sed -i 's|^FROM .*|FROM postgres:14|g' Dockerfile
+          echo "--- BEFORE TRANSFORMATION ---"
+          cat Dockerfile
           
-          # Force the Intel Julia download URL
+          # Strip Mac ARM platform flags
+          sed -i 's/--platform=linux\/arm64 //g' Dockerfile
+          # Force pure Intel Postgres base
+          sed -i 's|^FROM .*|FROM postgres:14|g' Dockerfile
+          # Force Intel Julia Download URL
           sed -i 's|https://julialang-s3.julialang.org/[^ ]*|https://julialang-s3.julialang.org/bin/linux/x64/1.10/julia-1.10.4-linux-x86_64.tar.gz|g' Dockerfile
+          
+          echo "--- AFTER TRANSFORMATION ---"
+          cat Dockerfile
 
       - name: Build PL/Julia and Run Tests
         run: docker build -t pljulia-ci --progress=plain --no-cache .
