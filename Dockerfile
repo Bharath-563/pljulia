@@ -1,10 +1,10 @@
 # Pl/Julia Development Docker images
 #
 # Arg/Parameters:
-#   BASE_IMAGE_VERSION=postgres:13
-#   JULIA_MAJOR=1.6
-#   JULIA_VERSION=1.6.1
-#   JULIA_SHA256=7c888adec3ea42afbfed2ce756ce1164a570d50fa7506c3f2e1e2cbc49d52506
+#   BASE_IMAGE_VERSION=postgres:14
+#   JULIA_MAJOR=1.10
+#   JULIA_VERSION=1.10.4
+#   JULIA_SHA256=ae4ae6ade84a103cdf30ce91c8d4035a0ef51c3e2e66f90a0c13abeb4e100fc4
 #   PLJULIA_REGRESSION=YES
 #   PLJULIA_PACKAGES="Primes"
 #
@@ -24,7 +24,7 @@
 # - postgis/postgis:13-3.1  : Should work
 #
 ARG BASE_IMAGE_VERSION=postgres:14
-FROM $BASE_IMAGE_VERSION as builder
+FROM $BASE_IMAGE_VERSION AS builder
 
 # Install build dependencies
 RUN    apt-get update \
@@ -32,16 +32,7 @@ RUN    apt-get update \
         build-essential \
         ca-certificates \
         curl \
-        postgresql-server-dev-$PG_MAJOR \
-    && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/* /tmp/*
-
-# Install build dependencies
-RUN    apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        curl \
+        execstack \
         postgresql-server-dev-$PG_MAJOR \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* /tmp/*
@@ -66,13 +57,17 @@ ENV LANG=C.UTF-8 \
 
 RUN set -eux; \
     mkdir ${JULIA_DIR} \
-    && cd /tmp  \
+    && cd /tmp \
     && curl -fL -o julia.tar.gz https://julialang-s3.julialang.org/bin/linux/x64/${JULIA_MAJOR}/julia-${JULIA_VERSION}-linux-x86_64.tar.gz \
     && tar xzf julia.tar.gz -C ${JULIA_DIR} --strip-components=1 \
     && rm /tmp/julia.tar.gz \
     && ln -fs ${JULIA_DIR}/bin/julia /usr/local/bin/julia
+
+# Fix for GitHub Actions kernel restricting executable stack (required for Julia 1.10+)
+RUN find ${JULIA_DIR}/lib/julia -name "*.so" -exec execstack --clear-execstack {} \;
+
 # Add julia packages from ENV["PLJULIA_PACKAGES"]
-# - this is a comma separated package name lists
+# - this is a comma separated package name list
 RUN set -eux; \
     if [ ! -z "$PLJULIA_PACKAGES" ]; then \
       echo "install: ${PLJULIA_PACKAGES}"; \
@@ -92,20 +87,22 @@ RUN set -eux; \
               end;'; \
     rm -rf "~/.julia/registries/General"
 
-# default :  add local code
-ADD .   /pljulia
+# default: add local code
+ADD . /pljulia
 
 # -------- Build & Install ----------
 ENV USE_PGXS=1
+
 RUN set -eux; \
     cd /pljulia \
         && make clean \
         && make \
         && make install
 
-# ------Regression tests---
+# ------ Regression tests ---
 ARG PLJULIA_REGRESSION=YES
 ENV PLJULIA_REGRESSION=${PLJULIA_REGRESSION}
+
 RUN set -eux; \
     if [ "$PLJULIA_REGRESSION" = "YES" ]; then  \
            cd /pljulia \
