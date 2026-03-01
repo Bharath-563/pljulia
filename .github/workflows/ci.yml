@@ -17,4 +17,4 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build PL/Julia and Run Tests
-        run: docker build -t pljulia-ci --progress=plain .
+        run: docker build -t pljulia-ci --progress=plain --no-cache .
