@@ -19,8 +19,8 @@ PGFILEDESC = "PL/Julia - procedural language"
 OBJS = pljulia.o convert_args.o
 
 JL_SHARE = $(shell $(JULIA) -e 'print(joinpath(Sys.BINDIR, Base.DATAROOTDIR, "julia"))')
-PG_CFLAGS += $(shell $(JULIA) $(JL_SHARE)/julia-config.jl --cflags)
-PG_CPPFLAGS += $(shell $(JULIA) $(JL_SHARE)/julia-config.jl --cflags)
+PG_CFLAGS += $(shell $(JULIA) $(JL_SHARE)/julia-config.jl --cflags | sed 's/-I/-isystem /g')
+PG_CPPFLAGS += $(shell $(JULIA) $(JL_SHARE)/julia-config.jl --cflags | sed 's/-I/-isystem /g')
 PG_LDFLAGS += $(shell $(JULIA) $(JL_SHARE)/julia-config.jl --ldflags)
 PG_LDFLAGS += $(shell $(JULIA) $(JL_SHARE)/julia-config.jl --ldlibs)
 
