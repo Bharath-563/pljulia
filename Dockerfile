@@ -41,13 +41,14 @@ RUN    apt-get update \
         ca-certificates \
         curl \
         postgresql-server-dev-$PG_MAJOR \
+        patchelf \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 # Julia Versions:
-ARG JULIA_MAJOR=1.6
-ARG JULIA_VERSION=1.6.3
-ARG JULIA_SHA256=c7459c334cd7c3e4a297baf52535937c6bad640e60882f9201a73bab9394314b
+ARG JULIA_MAJOR=1.10
+ARG JULIA_VERSION=1.10.10
+ARG JULIA_SHA256=6a78a03a71c7ab792e8673dc5cedb918e037f081ceb58b50971dfb7c64c5bf81
 ARG PLJULIA_PACKAGES="CpuId,Primes"
 
 # Install Julia
@@ -69,7 +70,8 @@ RUN set -eux; \
     && echo "$JULIA_SHA256 julia.tar.gz" | sha256sum -c - \
     && tar xzf julia.tar.gz -C ${JULIA_DIR} --strip-components=1 \
     && rm /tmp/julia.tar.gz \
-    && ln -fs ${JULIA_DIR}/bin/julia /usr/local/bin/julia
+    && ln -fs ${JULIA_DIR}/bin/julia /usr/local/bin/julia \
+    && patchelf --clear-execstack ${JULIA_DIR}/lib/julia/libopenlibm.so
 
 # Add julia packages from ENV["PLJULIA_PACKAGES"]
 # - this is a comma separated package name lists
@@ -106,6 +108,7 @@ RUN set -eux; \
 # ------Regression tests---
 ARG PLJULIA_REGRESSION=YES
 ENV PLJULIA_REGRESSION=${PLJULIA_REGRESSION}
+
 RUN set -eux; \
     if [ "$PLJULIA_REGRESSION" = "YES" ]; then  \
            cd /pljulia \
