@@ -11,7 +11,6 @@
 #
 # Key build arguments:
 #   BASE_IMAGE_VERSION   Base PostgreSQL image tag.
-#   JULIA_MAJOR          Julia major.minor path component.
 #   JULIA_VERSION        Full Julia version to install.
 #   JULIA_SHA256         Archive checksum for the selected Julia tarball.
 #   PLJULIA_REGRESSION   If YES, run installcheck during build.
@@ -66,16 +65,16 @@ RUN set -eux; \
     mkdir -p ${JULIA_DIR} ${JULIA_DEPOT_PATH}; \
     cd /tmp; \
     \
-    # If SHA256 is not provided, fetch it from the official Julia server
+   # If SHA256 is not provided, fetch it from the official Julia server
     if [ -z "$JULIA_SHA256" ]; then \
-        curl -fL -o julia_hashes.txt "https://julialang.org/bin/checksums/julia-${JULIA_VERSION}.sha256"; \
+        curl -fL -o julia_hashes.txt "https://julialang-s3.julialang.org/bin/checksums/julia-${JULIA_VERSION}.sha256"; \
         JULIA_SHA256=$(grep "julia-${JULIA_VERSION}-linux-${julia_arch_pkg}.tar.gz" julia_hashes.txt | cut -d' ' -f1); \
     fi; \
     \
     curl -fL -o julia.tar.gz "https://julialang-s3.julialang.org/bin/linux/${julia_arch_dir}/${JULIA_MAJOR}/julia-${JULIA_VERSION}-linux-${julia_arch_pkg}.tar.gz"; \
     echo "$JULIA_SHA256 julia.tar.gz" | sha256sum -c -; \
     tar xzf julia.tar.gz -C ${JULIA_DIR} --strip-components=1; \
-    rm /tmp/julia.tar.gz /tmp/julia_hashes.txt; \
+    rm -f /tmp/julia.tar.gz /tmp/julia_hashes.txt; \
     ln -fs ${JULIA_DIR}/bin/julia /usr/local/bin/julia; \
     patchelf --clear-execstack ${JULIA_DIR}/lib/julia/libopenlibm.so
 
@@ -97,8 +96,12 @@ RUN set -eux; \
               end; \
               Pkg.status(); \
               versioninfo(); \
-              if "CpuId" in packages \
-                println(CpuId.cpuinfo()); \
+            if "CpuId" in packages \
+                try \
+                  println(CpuId.cpuinfo()); \
+                catch e \
+                  println("CpuId.cpuinfo() skipped: not supported on this architecture."); \
+                end; \
               end;'; \
     chown -R postgres:postgres ${JULIA_DEPOT_PATH}; \
     rm -rf ${JULIA_DEPOT_PATH}/registries/General
