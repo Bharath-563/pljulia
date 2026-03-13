@@ -794,6 +794,7 @@ _PG_init(void)
 	jl_eval_string("using Dates");
 	jl_eval_string("pg_to_date(d) = d == 2147483647 ? typemax(Date) : d == -2147483648 ? typemin(Date) : Date(Dates.UTD(d + 730120))");
 	jl_eval_string("pg_to_datetime(d) = d == 9223372036854775807 ? typemax(DateTime) : d == -9223372036854775808 ? typemin(DateTime) : DateTime(Dates.UTM(fld(d, 1000) + 63082368000000))");
+	jl_eval_string("pg_to_zdt(d) = DateTime(Dates.UTM(fld(d, 1000) + 63082368000000))");
 	jl_eval_string("date_to_pg(d) = d == typemax(Date) ? Int32(2147483647) : d == typemin(Date) ? Int32(-2147483648) : Int32(Dates.value(d) - 730120)");
 	jl_eval_string("datetime_to_pg(d) = d == typemax(DateTime) ? Int64(9223372036854775807) : d == typemin(DateTime) ? Int64(-9223372036854775808) : Int64((Dates.value(d) - 63082368000000) * 1000)");
 }
