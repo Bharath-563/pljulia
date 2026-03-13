@@ -16,6 +16,8 @@
 #include <catalog/pg_type.h>
 #include <utils/memutils.h>
 #include <utils/builtins.h>
+#include <utils/date.h>
+#include <utils/timestamp.h>
 #include <utils/syscache.h>
 #include <utils/typcache.h>
 #include <utils/rel.h>
@@ -602,7 +604,7 @@ pljulia_return_next(jl_value_t *obj)
 	MemoryContextReset(current_call_data->tmp_cxt);
 }
 
-void
+PGDLLEXPORT void
 pljulia_elog(jl_value_t *lvl, jl_value_t *msg)
 {
 	volatile int level;
@@ -787,29 +789,15 @@ _PG_init(void)
 	jl_eval_string(
 				   "spi_exec_prepared(plan, args, limit) = ccall(:pljulia_spi_execplan, "
 				   "Any, (Any, Any, Any), plan, args, limit)");
-	/* load the installed packages */
-	jl_value_t *packages = jl_eval_string("using Pkg; collect(keys(Pkg.installed()))");
 
-	JL_GC_PUSH1(&packages);
-
-	npackages = jl_array_len(packages);
-	for (i = 0; i < npackages; i++)
-	{
-		char		packname[256];
-		jl_value_t *package;
-		int			j;
-
-		packname[0] = '\0';
-		package = jl_array_ptr_ref(packages, i);
-		strcpy(packname, "using ");
-		strcat(packname, jl_string_ptr(package));
-		j = strlen(packname);
-		packname[j] = '\0';
-		jl_eval_string(packname);
-	}
-	JL_GC_POP();
+	/* Native binary bridges for Postgres Date and Timestamp epochs */
+	jl_eval_string("using Dates");
+	jl_eval_string("pg_to_date(d) = d == 2147483647 ? typemax(Date) : d == -2147483648 ? typemin(Date) : Date(Dates.UTD(d + 730120))");
+	jl_eval_string("pg_to_datetime(d) = d == 9223372036854775807 ? typemax(DateTime) : d == -9223372036854775808 ? typemin(DateTime) : DateTime(Dates.UTM(fld(d, 1000) + 63082368000000))");
+	jl_eval_string("date_to_pg(d) = d == typemax(Date) ? Int32(2147483647) : d == typemin(Date) ? Int32(-2147483648) : Int32(Dates.value(d) - 730120)");
+	jl_eval_string("datetime_to_pg(d) = d == typemax(DateTime) ? Int64(9223372036854775807) : d == typemin(DateTime) ? Int64(-9223372036854775808) : Int64((Dates.value(d) - 63082368000000) * 1000)");
 }
-
+	
 /*
  * Convert the C string "input" to a Datum of type "typeoid".
  */
@@ -910,6 +898,18 @@ jl_value_t_to_datum(FunctionCallInfo fcinfo, jl_value_t *ret, Oid prorettype, bo
 		buffer = (char *) palloc0((LONG_INT_LEN + 1) * sizeof(char));
 		snprintf(buffer, LONG_INT_LEN, "%d", ret_unboxed);
 	}
+	else if (strcmp(jl_typeof_str(ret), "Date") == 0)
+	{
+		jl_function_t *f = jl_get_function(jl_main_module, "date_to_pg");
+		int32 pg_date = jl_unbox_int32(jl_call1(f, ret));
+		PG_RETURN_DATUM(DateADTGetDatum(pg_date));
+	}
+	else if (strcmp(jl_typeof_str(ret), "DateTime") == 0)
+	{
+		jl_function_t *f = jl_get_function(jl_main_module, "datetime_to_pg");
+		int64 pg_ts = jl_unbox_int64(jl_call1(f, ret));
+		PG_RETURN_DATUM(TimestampGetDatum(pg_ts));
+	}
 	/* If not a base type, but still a valid type */
 	else if (jl_is_array(ret))
 	{
@@ -995,6 +995,18 @@ convert_arg_to_julia(Datum d, Oid argtype, pljulia_proc_desc *prodesc, int i)
 	else if (prodesc->arg_is_rowtype[i])
 	{
 		result = julia_dict_from_datum(d);
+	}
+	else if (argtype == DATEOID)
+	{
+		DateADT pg_date = DatumGetDateADT(d);
+		jl_function_t *f = jl_get_function(jl_main_module, "pg_to_date");
+		result = jl_call1(f, jl_box_int32(pg_date));
+	}
+	else if (argtype == TIMESTAMPOID || argtype == TIMESTAMPTZOID)
+	{
+		Timestamp pg_ts = DatumGetTimestamp(d);
+		jl_function_t *f = jl_get_function(jl_main_module, "pg_to_datetime");
+		result = jl_call1(f, jl_box_int64(pg_ts));
 	}
 	else
 	{
