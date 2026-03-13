@@ -111,6 +111,13 @@ pg_oid_to_jl_datatype(Oid argtype)
 		case VARCHAROID:
 			result = (jl_value_t *) jl_string_type;
 			break;
+		case DATEOID:
+			result = jl_eval_string("Dates.Date");
+			break;
+		case TIMESTAMPOID:
+		case TIMESTAMPTZOID:
+			result = jl_eval_string("Dates.DateTime");
+			break;
 		default:
 			/* return a string representation for everything else */
 			result = (jl_value_t *) jl_string_type;
