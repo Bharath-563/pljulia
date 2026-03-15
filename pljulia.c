@@ -602,7 +602,7 @@ pljulia_return_next(jl_value_t *obj)
 	MemoryContextReset(current_call_data->tmp_cxt);
 }
 
-void
+PGDLLEXPORT void
 pljulia_elog(jl_value_t *lvl, jl_value_t *msg)
 {
 	volatile int level;
