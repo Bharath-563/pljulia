@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * pljulia.c - Handler for the PL/Julia
- *             procedural language
+ * procedural language
  *
  * Portions Copyright (c) 2019, PostgreSQL Global Development Group
  *
@@ -28,6 +28,8 @@
 #include <commands/event_trigger.h>
 #include <utils/guc.h>
 #include "parser/parse_type.h"
+#include <utils/date.h>
+#include <utils/timestamp.h>
 
 #include <sys/time.h>
 #include <julia.h>
@@ -49,8 +51,8 @@
 typedef struct pljulia_proc_desc
 {
 	/* the name given by the user upon function definition */
-	char	   *user_proname;
-	char	   *internal_proname;	/* Julia name (based on function OID) */
+	char       *user_proname;
+	char       *internal_proname;	/* Julia name (based on function OID) */
 
 	/*
 	 * context holding this procedure and its subsidiaries analogous to
@@ -60,11 +62,11 @@ typedef struct pljulia_proc_desc
 	Oid			result_typid;	/* OID of fn's result type */
 	int			nargs;			/* number of arguments */
 	TransactionId fn_xmin;
-	char	   *function_body;
+	char       *function_body;
 	FmgrInfo   *arg_out_func;	/* output fns for arg types, kept to convert
 								 * from datum to cstring */
-	Oid		   *arg_arraytype;	/* InvalidOid if not an array */
-	bool	   *arg_is_rowtype; /* is the argument composite? */
+	Oid        *arg_arraytype;	/* InvalidOid if not an array */
+	bool       *arg_is_rowtype; /* is the argument composite? */
 	bool		fn_retisset;	/* true if function returns set (SRF) */
 	bool		fn_retistuple;	/* true if function returns composite */
 } pljulia_proc_desc;
@@ -76,9 +78,9 @@ typedef struct pljulia_query_desc
 	MemoryContext plan_cxt;		/* context holding this struct */
 	SPIPlanPtr	plan;
 	int			nargs;
-	Oid		   *argtypes;
+	Oid        *argtypes;
 	FmgrInfo   *arginfuncs;
-	Oid		   *argtypioparams;
+	Oid        *argtypioparams;
 }			pljulia_query_desc;
 
 /* The procedure hash key */
@@ -190,7 +192,7 @@ utf_e2u(const char *src)
 jl_value_t *
 pljulia_spi_query(jl_value_t *cmd)
 {
-	char	   *cursor;
+	char       *cursor;
 	SPIPlanPtr	plan;
 	Portal		portal;
 
@@ -412,10 +414,10 @@ jl_value_t *
 pljulia_spi_execplan(jl_value_t *plan, jl_value_t *arguments, jl_value_t *lim)
 {
 	int			i;
-	char	   *nulls;
+	char       *nulls;
 	int			limit;
 	int			nargs;
-	Datum	   *argvalues;
+	Datum      *argvalues;
 	pljulia_query_desc *qdesc;
 	pljulia_query_entry *hash_entry;
 	jl_function_t *len = jl_get_function(jl_base_module, "length");
@@ -602,7 +604,7 @@ pljulia_return_next(jl_value_t *obj)
 	MemoryContextReset(current_call_data->tmp_cxt);
 }
 
-void
+PGDLLEXPORT void
 pljulia_elog(jl_value_t *lvl, jl_value_t *msg)
 {
 	volatile int level;
@@ -637,8 +639,6 @@ pljulia_elog(jl_value_t *lvl, jl_value_t *msg)
 	return;
 }
 
-
-
 /*
  * takes a Julia tuple or dictionary and a TupleDesc as input,
  * and returns a heaptuple to use in a SRF tuplestore.
@@ -646,8 +646,8 @@ pljulia_elog(jl_value_t *lvl, jl_value_t *msg)
 static HeapTuple
 pljulia_build_tuple_result(jl_value_t *obj, TupleDesc tupdesc)
 {
-	Datum	   *values;
-	bool	   *nulls;
+	Datum      *values;
+	bool       *nulls;
 	HeapTuple	tup;
 	int			nfields;
 	Form_pg_attribute att;
@@ -686,7 +686,7 @@ pljulia_build_tuple_result(jl_value_t *obj, TupleDesc tupdesc)
 			curr_elem = jl_get_nth_field(obj, i);
 		else
 		{
-			char	   *attname = NameStr(att->attname);
+			char       *attname = NameStr(att->attname);
 			jl_value_t *key = jl_cstr_to_string(attname);
 			jl_function_t *dict_get = jl_get_function(jl_main_module, "dict_get");
 
@@ -748,7 +748,7 @@ _PG_init(void)
 	pljulia_query_hashtable = hash_create("PL/Julia cached plans hashtable",
 										  32, &hash_ctl, HASH_ELEM);
 
-	char	   *dict_set_command,
+	char       *dict_set_command,
 			   *dict_get_command;
 
 	/*
@@ -787,6 +787,13 @@ _PG_init(void)
 	jl_eval_string(
 				   "spi_exec_prepared(plan, args, limit) = ccall(:pljulia_spi_execplan, "
 				   "Any, (Any, Any, Any), plan, args, limit)");
+
+	jl_eval_string("using Dates");
+	jl_eval_string("pg_to_date(d) = d == 2147483647 ? typemax(Date) : d == -2147483648 ? typemin(Date) : Date(Dates.UTD(d + 730120))");
+	jl_eval_string("date_to_pg(d) = d == typemax(Date) ? Int32(2147483647) : d == typemin(Date) ? Int32(-2147483648) : Int32(Dates.value(d) - 730120)");
+	jl_eval_string("pg_to_datetime(d) = d == 9223372036854775807 ? typemax(DateTime) : d == -9223372036854775808 ? typemin(DateTime) : DateTime(Dates.UTM(fld(d, 1000) + 63082368000000))");
+	jl_eval_string("datetime_to_pg(d) = d == typemax(DateTime) ? Int64(9223372036854775807) : d == typemin(DateTime) ? Int64(-9223372036854775808) : Int64((Dates.value(d) - 63082368000000) * 1000)");
+
 	/* load the installed packages */
 	jl_value_t *packages = jl_eval_string("using Pkg; collect(keys(Pkg.installed()))");
 
@@ -833,7 +840,7 @@ static Datum
 jl_value_t_to_datum(FunctionCallInfo fcinfo, jl_value_t *ret, Oid prorettype, bool usefcinfo)
 {
 	/* maybe I should check the depth of the recursion stack */
-	char	   *buffer;
+	char       *buffer;
 
 	/* A nothing in Julia is a NULL in Postgres */
 	if (jl_is_nothing(ret))
@@ -910,6 +917,18 @@ jl_value_t_to_datum(FunctionCallInfo fcinfo, jl_value_t *ret, Oid prorettype, bo
 		buffer = (char *) palloc0((LONG_INT_LEN + 1) * sizeof(char));
 		snprintf(buffer, LONG_INT_LEN, "%d", ret_unboxed);
 	}
+	else if (strcmp(jl_typeof_str(ret), "Date") == 0)
+	{
+		jl_function_t *f = jl_get_function(jl_main_module, "date_to_pg");
+		int32 pg_date = jl_unbox_int32(jl_call1(f, ret));
+		PG_RETURN_DATUM(DateADTGetDatum(pg_date));
+	}
+	else if (strcmp(jl_typeof_str(ret), "DateTime") == 0)
+	{
+		jl_function_t *f = jl_get_function(jl_main_module, "datetime_to_pg");
+		int64 pg_ts = jl_unbox_int64(jl_call1(f, ret));
+		PG_RETURN_DATUM(TimestampGetDatum(pg_ts));
+	}
 	/* If not a base type, but still a valid type */
 	else if (jl_is_array(ret))
 	{
@@ -940,9 +959,9 @@ julia_setup_input_args(FunctionCallInfo fcinfo, HeapTuple procedure_tuple,
 					   Form_pg_proc procedure_struct, jl_value_t **boxed_args,
 					   pljulia_proc_desc *prodesc)
 {
-	Oid		   *argtypes;
-	char	  **argnames;
-	char	   *argmodes;
+	Oid        *argtypes;
+	char      **argnames;
+	char       *argmodes;
 	int			i;
 	Form_pg_type type_struct;
 	HeapTuple	type_tuple;
@@ -996,9 +1015,21 @@ convert_arg_to_julia(Datum d, Oid argtype, pljulia_proc_desc *prodesc, int i)
 	{
 		result = julia_dict_from_datum(d);
 	}
+	else if (argtype == DATEOID)
+	{
+		DateADT pg_date = DatumGetDateADT(d);
+		jl_function_t *f = jl_get_function(jl_main_module, "pg_to_date");
+		result = jl_call1(f, jl_box_int32(pg_date));
+	}
+	else if (argtype == TIMESTAMPOID || argtype == TIMESTAMPTZOID)
+	{
+		Timestamp pg_ts = DatumGetTimestamp(d);
+		jl_function_t *f = jl_get_function(jl_main_module, "pg_to_datetime");
+		result = jl_call1(f, jl_box_int64(pg_ts));
+	}
 	else
 	{
-		char	   *value;
+		char       *value;
 
 		value = OutputFunctionCall(&prodesc->arg_out_func[i], d);
 		result = pg_oid_to_jl_value(argtype, value);
@@ -1037,7 +1068,7 @@ pljulia_dict_from_tuple(HeapTuple tuple, TupleDesc tupdesc,
 {
 	int			i;
 	Form_pg_attribute att;
-	char	   *attname;
+	char       *attname;
 	Datum		attr;
 	bool		isnull;
 	Oid			typoutput;
@@ -1081,7 +1112,7 @@ pljulia_dict_from_tuple(HeapTuple tuple, TupleDesc tupdesc,
 		 */
 		else
 		{
-			char	   *outputstr;
+			char       *outputstr;
 
 			outputstr = OidOutputFunctionCall(typoutput, attr);
 			value = pg_oid_to_jl_value(att->atttypid, outputstr);
@@ -1107,10 +1138,10 @@ julia_array_from_datum(Datum d, Oid argtype)
 				nitems,
 				ndims,
 			   *dims;
-	bool	   *nulls;
-	Datum	   *elements;
+	bool       *nulls;
+	Datum      *elements;
 	jl_array_t *jl_arr;
-	char	   *value;
+	char       *value;
 	jl_value_t **types,
 			  **tupvalues;		/* types: the dimension types, so all int64
 								 * tupvalues: the size of each dimension  */
@@ -1185,7 +1216,7 @@ pljulia_inline_handler(PG_FUNCTION_ARGS)
 	 * arguments and does not return anything (void)
 	 */
 	InlineCodeBlock *codeblock = (InlineCodeBlock *) PG_GETARG_POINTER(0);
-	char	   *source_code = codeblock->source_text;
+	char       *source_code = codeblock->source_text;
 
 	jl_eval_string(source_code);
 	if (jl_exception_occurred())
@@ -1250,7 +1281,7 @@ pljulia_compile(FunctionCallInfo fcinfo, HeapTuple procedure_tuple,
 	MemoryContext oldcontext;
 
 	int			compiled_len = 0;
-	char	   *compiled_code;
+	char       *compiled_code;
 	pljulia_proc_desc *prodesc = NULL;
 
 	int			i;
@@ -1258,10 +1289,10 @@ pljulia_compile(FunctionCallInfo fcinfo, HeapTuple procedure_tuple,
 	Form_pg_type type_struct;
 	HeapTuple	type_tuple;
 
-	Oid		   *argtypes;
-	char	  **argnames;
-	char	   *argmodes;
-	char	   *value;
+	Oid        *argtypes;
+	char      **argnames;
+	char       *argmodes;
+	char       *value;
 
 	bool		found_hashentry;
 	pljulia_proc_key proc_key;
@@ -1424,7 +1455,7 @@ pljulia_compile(FunctionCallInfo fcinfo, HeapTuple procedure_tuple,
 	else if (is_trigger)
 	{
 		/* the following arguments are standard for trigger calls */
-		char	   *TD_standard_args =
+		char       *TD_standard_args =
 		"TD_name, TD_relid, TD_table_name, TD_table_schema, TD_event, TD_when, "
 		"TD_level, TD_NEW, TD_OLD, args";
 
@@ -1470,7 +1501,7 @@ pljulia_compile(FunctionCallInfo fcinfo, HeapTuple procedure_tuple,
 	else if (is_event_trigger)
 	{
 		/* the following arguments are standard for event trigger calls */
-		char	   *TD_standard_args = "TD_event, TD_tag";
+		char       *TD_standard_args = "TD_event, TD_tag";
 
 		compiled_len += strlen(procedure_code) + 1;
 		proc_cxt = AllocSetContextCreate(TopMemoryContext, "PL/Julia function",
@@ -1613,8 +1644,8 @@ pg_array_from_julia_array(FunctionCallInfo fcinfo, jl_value_t *ret,
 						  Oid prorettype)
 {
 	ArrayType  *array;
-	Datum	   *array_elem;
-	bool	   *nulls = NULL;
+	Datum      *array_elem;
+	bool       *nulls = NULL;
 	int16		typlen;
 	bool		typbyval;
 	char		typalign;
@@ -1622,8 +1653,8 @@ pg_array_from_julia_array(FunctionCallInfo fcinfo, jl_value_t *ret,
 	Oid			elem_type = get_element_type(prorettype);
 	size_t		len = jl_array_len(ret);
 	int			ndim = jl_array_ndims(ret);
-	int		   *dims = (int *) palloc0(sizeof(int) * ndim);
-	int		   *lbs = (int *) palloc0(sizeof(int) * ndim);
+	int        *dims = (int *) palloc0(sizeof(int) * ndim);
+	int        *lbs = (int *) palloc0(sizeof(int) * ndim);
 	int			i;
 	jl_value_t *curr_elem;
 
@@ -1676,8 +1707,8 @@ pg_composite_from_julia_tuple(FunctionCallInfo fcinfo, jl_value_t *ret,
 	jl_value_t *curr_elem;
 	TupleDesc	tupdesc;
 	Oid			resultTypeId;
-	Datum	   *elements;
-	bool	   *nulls = NULL;
+	Datum      *elements;
+	bool       *nulls = NULL;
 	HeapTuple	tup;
 	Form_pg_attribute att;
 
@@ -1738,10 +1769,10 @@ pg_composite_from_julia_dict(FunctionCallInfo fcinfo, jl_value_t *ret,
 			   *key;
 	TupleDesc	tupdesc;
 	Oid			resultTypeId;
-	Datum	   *elements;
-	bool	   *nulls = NULL;
+	Datum      *elements;
+	bool       *nulls = NULL;
 	HeapTuple	tup;
-	char	   *attname;
+	char       *attname;
 	Form_pg_attribute att;
 	jl_function_t *dict_get,
 			   *dict_nfields;
@@ -1812,7 +1843,7 @@ pljulia_trigger_handler(PG_FUNCTION_ARGS)
 				rc;
 	pljulia_proc_desc *prodesc;
 	jl_value_t *trig_args[10];
-	char	   *stroid,
+	char       *stroid,
 			   *when,
 			   *level,
 			   *event,
@@ -2075,11 +2106,11 @@ pljulia_validator(PG_FUNCTION_ARGS)
 	Oid			funcoid = PG_GETARG_OID(0);
 	HeapTuple	tuple;
 	Form_pg_proc proc;
-	char	   *code;
+	char       *code;
 	Datum		prosrc_datum;
-	Oid		   *argtypes;
-	char	  **argnames;
-	char	   *argmodes;
+	Oid        *argtypes;
+	char      **argnames;
+	char       *argmodes;
 	bool		isnull;
 	char		functyptype;
 	bool		is_trigger = false,
@@ -2087,11 +2118,11 @@ pljulia_validator(PG_FUNCTION_ARGS)
 	int			i,
 				nargs;
 	int			compiled_len = 0;
-	char	   *trig_args =
+	char       *trig_args =
 	"TD_name, TD_relid, TD_table_name, TD_table_schema, TD_event, TD_when, "
 	"TD_level, TD_NEW, TD_OLD, args";
-	char	   *evt_trig_args = "TD_event, TD_tag";
-	char	   *compiled_code;
+	char       *evt_trig_args = "TD_event, TD_tag";
+	char       *compiled_code;
 
 	/*
 	 * Verify that we have a pljulia function and that the user has access to
