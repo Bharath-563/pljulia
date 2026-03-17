@@ -1,5 +1,4 @@
-# Docker image for PL/Julia.
-#
+# Pl/Julia Development Docker images
 # Build on top of an official Debian-based PostgreSQL image and keep the
 # resulting image as close as practical to the upstream postgres image.
 # In particular, avoid changing inherited defaults such as the working
@@ -37,9 +36,8 @@ RUN    apt-get update \
 # Julia version configuration. : https://julialang.org/downloads/manual-downloads/
 ARG JULIA_VERSION=1.10.11
 ARG JULIA_SHA256=""
-ARG PLJULIA_PACKAGES="CpuId,Primes"
+ARG PLJULIA_PACKAGES=""
 
-# Export Julia-related environment variables.
 # Export Julia-related environment variables.
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -95,18 +93,12 @@ RUN set -eux; \
                 end; \
               end; \
               Pkg.status(); \
-              versioninfo(); \
-            if "CpuId" in packages \
-                try \
-                  println(CpuId.cpuinfo()); \
-                catch e \
-                  println("CpuId.cpuinfo() skipped: not supported on this architecture."); \
-                end; \
-              end;'; \
+              versioninfo();'; \
     chown -R postgres:postgres ${JULIA_DEPOT_PATH}; \
     rm -rf ${JULIA_DEPOT_PATH}/registries/General
 
-# Add the local extension source tree to the build image.
+# default : add host code
+# Add the host extension source tree to the build image.
 ADD .   /pljulia
 
 # -------- Build & Install ----------
@@ -117,43 +109,51 @@ RUN set -eux; \
         && make \
         && make install
 
-# Run regression tests during the image build when enabled.
+# ------Regression tests---
+# Use the Docker build process to execute the regression test suite.
 ARG PLJULIA_REGRESSION=YES
 ENV PLJULIA_REGRESSION=${PLJULIA_REGRESSION}
 
-RUN set -eux; \
-    if [ "$PLJULIA_REGRESSION" = "YES" ]; then  \
-           cd /pljulia \
-        && mkdir /tempdb \
-        && chown -R postgres:postgres /tempdb \
-        && su postgres -c 'pg_ctl -D /tempdb init' \
-        && su postgres -c 'pg_ctl -D /tempdb start' \
-        && printf '%s\n' \
-           'CREATE EXTENSION pljulia;' \
-           'SELECT version() AS postgresql_full_version;' \
-           'DO $$' \
-           'using Pkg' \
-           'arch_name = Sys.ARCH === :x86_64 ? "amd64/x86_64" : string(Sys.ARCH)' \
-           'elog("INFO", "ARCH = " * arch_name)' \
-           'elog("INFO", "JULIA_VERSION = " * string(VERSION))' \
-           'elog("INFO", "SYS_BINDIR = " * Sys.BINDIR)' \
-           'elog("INFO", "HOMEDIR = " * homedir())' \
-           'elog("INFO", "PWD = " * pwd())' \
-           'elog("INFO", "DEPOT_PATH = " * join(DEPOT_PATH, " | "))' \
-           'elog("INFO", "LOAD_PATH = " * join(LOAD_PATH, " | "))' \
-           'elog("INFO", "ACTIVE_PROJECT = " * string(Base.active_project()))' \
-           'depot_writable = try; mktemp(DEPOT_PATH[1]) do path, io; end; true; catch; false; end' \
-           'elog("INFO", "DEPOT_WRITABLE = " * string(depot_writable))' \
-           'elog("INFO", "DEPENDENCIES = " * repr(collect(keys(Pkg.project().dependencies))))' \
-           '$$ LANGUAGE pljulia;' \
-           > /tmp/pljulia_env.sql \
-        && chown postgres:postgres /tmp/pljulia_env.sql \
-        && su postgres -c 'psql -v ON_ERROR_STOP=1 -f /tmp/pljulia_env.sql postgres' \
-        && rm -f /tmp/pljulia_env.sql \
-        && make installcheck PGUSER=postgres \
-        && su postgres -c 'pg_ctl -D /tempdb --mode=immediate stop' \
-        && rm -rf /tempdb ; \
+RUN set -x; \
+    if [ "$PLJULIA_REGRESSION" = "YES" ]; then \
+        cd /pljulia; \
+        mkdir /tempdb; \
+        chown -R postgres:postgres /tempdb; \
+        su postgres -c 'pg_ctl -D /tempdb init'; \
+        su postgres -c 'pg_ctl -D /tempdb start'; \
+        \
+        printf '%s\n' \
+            'CREATE EXTENSION pljulia;' \
+            'SELECT version() AS postgresql_full_version;' \
+            'DO $$' \
+            'using Pkg' \
+            'arch_name = Sys.ARCH === :x86_64 ? "amd64/x86_64" : string(Sys.ARCH)' \
+            'elog("INFO", "ARCH = " * arch_name)' \
+            'elog("INFO", "JULIA_VERSION = " * string(VERSION))' \
+            'elog("INFO", "SYS_BINDIR = " * Sys.BINDIR)' \
+            'elog("INFO", "HOMEDIR = " * homedir())' \
+            'elog("INFO", "PWD = " * pwd())' \
+            'elog("INFO", "DEPOT_PATH = " * join(DEPOT_PATH, " | "))' \
+            'elog("INFO", "LOAD_PATH = " * join(LOAD_PATH, " | "))' \
+            'elog("INFO", "ACTIVE_PROJECT = " * string(Base.active_project()))' \
+            'depot_writable = try; mktemp(DEPOT_PATH[1]) do path, io; end; true; catch; false; end' \
+            'elog("INFO", "DEPOT_WRITABLE = " * string(depot_writable))' \
+            'elog("INFO", "DEPENDENCIES = " * repr(collect(keys(Pkg.project().dependencies))))' \
+            '$$ LANGUAGE pljulia;' \
+            > /tmp/pljulia_env.sql; \
+        \
+        chown postgres:postgres /tmp/pljulia_env.sql; \
+        su postgres -c 'psql -v ON_ERROR_STOP=0 -f /tmp/pljulia_env.sql postgres' || true; \
+        rm -f /tmp/pljulia_env.sql; \
+        \
+        set +e; \
+        make installcheck PGUSER=postgres; \
+        TEST_EXIT_CODE=$?; \
+        set -e; \
+        \
+        su postgres -c 'pg_ctl -D /tempdb --mode=immediate stop'; \
+        rm -rf /tempdb; \
+        \
+        if [ "$TEST_EXIT_CODE" -ne 0 ]; then exit $TEST_EXIT_CODE; fi; \
     fi
-# -----------------------------
-
 
